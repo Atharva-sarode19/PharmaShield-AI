@@ -2,15 +2,19 @@ import streamlit as st
 import torch
 import torch.nn as nn
 import numpy as np
-import cv2
 
 from PIL import Image
 from torchvision import models, transforms
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
+from pathlib import Path
 
-MODEL_PATH = "model/pharmashield_efficientnet_b0.pth"
+st.set_page_config(
+    page_title="PharmaShield AI",
+    page_icon="🛡️",
+    layout="wide"
+)
 
 DEVICE = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
@@ -18,8 +22,17 @@ DEVICE = torch.device(
 
 CLASS_NAMES = ["Fake", "Real"]
 
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "model" / "pharmashield_efficientnet_b0.pth"
+
 @st.cache_resource
 def load_model():
+
+    if not MODEL_PATH.exists():
+        st.error(
+            f"Model file not found:\n{MODEL_PATH}"
+        )
+        st.stop()
 
     model = models.efficientnet_b0(weights=None)
 
@@ -31,7 +44,7 @@ def load_model():
     )
 
     checkpoint = torch.load(
-        MODEL_PATH,
+        str(MODEL_PATH),
         map_location=DEVICE
     )
 
@@ -60,8 +73,6 @@ def calculate_risk_score(probabilities):
 
     fake_probability = probabilities[0, 0].item()
 
-    # Current baseline score:
-    # higher fake probability = higher suspicion
     score = fake_probability * 100
 
     return score
@@ -75,10 +86,14 @@ def get_risk_level(score):
     elif score < 65:
         return "MEDIUM"
 
-    else:
-        return "HIGH"
+    return "HIGH"
 
-def generate_gradcam(model, input_tensor, predicted_class, rgb_image):
+def generate_gradcam(
+    model,
+    input_tensor,
+    predicted_class,
+    rgb_image
+):
 
     target_layer = model.features[-1]
 
@@ -103,12 +118,6 @@ def generate_gradcam(model, input_tensor, predicted_class, rgb_image):
     )
 
     return visualization
-
-st.set_page_config(
-    page_title="PharmaShield AI",
-    page_icon="🛡️",
-    layout="wide"
-)
 
 st.title("🛡️ PharmaShield AI")
 
@@ -144,14 +153,14 @@ if uploaded_file is not None:
         width=450
     )
 
-    # Convert image
+    # Prepare image
     input_tensor = transform(
         image
     ).unsqueeze(0).to(DEVICE)
 
-    # Image for Grad-CAM
     rgb_image = np.array(
-        image.resize((224, 224))
+        image.resize((224, 224)
+        )
     ) / 255.0
 
     with st.spinner("Analyzing packaging..."):
@@ -171,6 +180,7 @@ if uploaded_file is not None:
                 dim=1
             ).item()
 
+
     confidence = probabilities[
         0,
         predicted_class
@@ -187,7 +197,7 @@ if uploaded_file is not None:
     prediction = CLASS_NAMES[
         predicted_class
     ]
-
+    
     st.divider()
 
     st.header("Analysis Result")
@@ -219,26 +229,31 @@ if uploaded_file is not None:
     if risk_level == "HIGH":
 
         st.error(
-            f"🔴 HIGH SUSPICION — {risk_score:.1f}/100"
+            f"🔴 HIGH SUSPICION — "
+            f"{risk_score:.1f}/100"
         )
 
     elif risk_level == "MEDIUM":
 
         st.warning(
-            f"🟠 MEDIUM SUSPICION — {risk_score:.1f}/100"
+            f"🟠 MEDIUM SUSPICION — "
+            f"{risk_score:.1f}/100"
         )
 
     else:
 
         st.success(
-            f"🟢 LOW SUSPICION — {risk_score:.1f}/100"
+            f"🟢 LOW SUSPICION — "
+            f"{risk_score:.1f}/100"
         )
 
     st.divider()
 
     st.header("💡 Explainable AI")
 
-    with st.spinner("Generating AI explanation..."):
+    with st.spinner(
+        "Generating AI explanation..."
+    ):
 
         heatmap = generate_gradcam(
             model,
@@ -246,6 +261,7 @@ if uploaded_file is not None:
             predicted_class,
             rgb_image
         )
+
 
     col1, col2 = st.columns(2)
 
@@ -267,10 +283,9 @@ if uploaded_file is not None:
 
 
     st.write(
-        "Highlighted regions show areas that contributed "
-        "strongly to the model's prediction."
+        "Highlighted regions show areas that "
+        "contributed strongly to the model's prediction."
     )
-
     st.divider()
 
     st.warning(
